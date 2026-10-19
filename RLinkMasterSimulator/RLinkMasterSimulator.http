@@ -1,0 +1,6 @@
+@RLinkMasterSimulator_HostAddress = http://localhost:5127
+
+GET {{RLinkMasterSimulator_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

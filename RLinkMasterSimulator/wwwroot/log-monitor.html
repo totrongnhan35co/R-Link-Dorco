@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>R-Link Log Monitor</title>
+		<style>
+			* { box-sizing: border-box; margin: 0; padding: 0; }
+			body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; }
+			header {
+			background: #1a1d27; padding: 14px 24px;
+			display: flex; align-items: center; gap: 16px;
+			border-bottom: 2px solid #2563eb;
+			}
+			header h1 { font-size: 18px; color: #60a5fa; }
+			#status-dot {
+			width: 10px; height: 10px; border-radius: 50%;
+			background: #22c55e; box-shadow: 0 0 6px #22c55e;
+			animation: pulse 2s infinite;
+			}
+			@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+			#last-update { margin-left: auto; font-size: 12px; color: #6b7280; }
+			.tabs { display: flex; gap: 4px; padding: 12px 16px 0; background: #1a1d27; }
+			.tab {
+			padding: 8px 20px; border-radius: 8px 8px 0 0; cursor: pointer;
+			font-size: 13px; background: #252836; color: #9ca3af;
+			border: 1px solid #374151; border-bottom: none; transition: all .2s;
+			}
+			.tab.active { background: #1e3a5f; color: #60a5fa; border-color: #2563eb; }
+			.tab .badge {
+			display: inline-block; min-width: 20px; padding: 1px 5px;
+			background: #374151; border-radius: 10px; font-size: 11px;
+			margin-left: 6px; color: #d1d5db;
+			}
+			.tab.active .badge { background: #2563eb; color: #fff; }
+			.panel { display: none; padding: 0 16px 16px; }
+			.panel.active { display: block; }
+			.toolbar { display: flex; gap: 8px; padding: 10px 0; align-items: center; }
+			.toolbar input {
+			flex: 1; padding: 6px 12px; background: #252836;
+			border: 1px solid #374151; border-radius: 6px;
+			color: #e0e0e0; font-size: 13px;
+			}
+			.toolbar input:focus { outline: none; border-color: #2563eb; }
+			.btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+			.btn-primary { background: #2563eb; color: #fff; }
+			.btn-danger  { background: #dc2626; color: #fff; }
+			.btn:hover { opacity: .85; }
+			.table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #374151; }
+			table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+			thead tr { background: #1e2435; }
+			th { padding: 9px 12px; text-align: left; color: #60a5fa; font-weight: 600;
+			border-bottom: 1px solid #374151; white-space: nowrap; }
+			tbody tr { border-bottom: 1px solid #1e2435; transition: background .15s; }
+			tbody tr:hover { background: #1e2435; }
+			td { padding: 7px 12px; vertical-align: middle; }
+			.badge-status {
+			display: inline-block; padding: 2px 8px; border-radius: 12px;
+			font-size: 11px; font-weight: 600; white-space: nowrap;
+			}
+			.s-start     { background:#164e63; color:#67e8f9; }
+			.s-running   { background:#1e3a5f; color:#60a5fa; }
+			.s-stop      { background:#374151; color:#d1d5db; }
+			.s-completed { background:#14532d; color:#86efac; }
+			.s-error     { background:#7f1d1d; color:#fca5a5; }
+			.num-ok   { color: #86efac; font-weight: 600; }
+			.num-fail { color: #fca5a5; font-weight: 600; }
+			.num-total{ color: #93c5fd; }
+			.empty-row td { text-align: center; color: #4b5563; padding: 32px; }
+		</style>
+	</head>
+	<body>
+		<header>
+			<div id="status-dot"></div>
+			<h1>🖥 R-Link Log Monitor</h1>
+			<label style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:6px;">
+				<input type="checkbox" id="refresh-toggle" checked="" />
+				Tự động cập nhật (3s)
+			</label>
+			<span id="last-update"></span>
+		</header>
+
+		<div class="tabs">
+			<div class="tab active" onclick="switchTab('status')">
+				📋 Log Status <span class="badge" id="badge-status">0</span>
+			</div>
+			<div class="tab" onclick="switchTab('camera')">
+				📷 Log Camera <span class="badge" id="badge-camera">0</span>
+			</div>
+			<div class="tab" onclick="switchTab('camera-error')">
+				⚠️ Camera Error <span class="badge" id="badge-error">0</span>
+			</div>
+			<div class="tab" onclick="switchTab('sync')">
+				🔄 Log Sync <span class="badge" id="badge-sync">0</span>
+			</div>
+		</div>
+
+		<!-- Panel: Status -->
+		<div class="panel active" id="panel-status">
+			<div class="toolbar">
+				<input type="text" id="filter-status" placeholder="Lọc: line_id, job, batch, status..." oninput="renderStatus()" />
+				<button class="btn btn-danger" onclick="clearFilter('filter-status')">✕</button>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Thời gian</th>
+							<th>Line</th>
+							<th>RLink</th>
+							<th>Job</th>
+							<th>Batch</th>
+							<th>Status</th>
+							<th>Sản xuất</th>
+							<th>Operator</th>
+						</tr>
+					</thead>
+					<tbody id="body-status">
+						<tr class="empty-row">
+							<td colspan="8">Chưa có dữ liệu</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Panel: Camera -->
+		<div class="panel" id="panel-camera">
+			<div class="toolbar">
+				<input type="text" id="filter-camera" placeholder="Lọc: line_id, job, batch..." oninput="renderCamera()" />
+				<button class="btn btn-danger" onclick="clearFilter('filter-camera')">✕</button>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Thời gian</th>
+							<th>Line</th>
+							<th>RLink</th>
+							<th>Job</th>
+							<th>Batch</th>
+							<th class="num-ok">✔ OK</th>
+							<th class="num-fail">✘ Fail</th>
+							<th class="num-total">Total</th>
+							<th>Operator</th>
+						</tr>
+					</thead>
+					<tbody id="body-camera">
+						<tr class="empty-row">
+							<td colspan="9">Chưa có dữ liệu</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Panel: Camera Error -->
+		<div class="panel" id="panel-camera-error">
+			<div class="toolbar">
+				<input type="text" id="filter-error" placeholder="Lọc: QR, error_type, job, line..." oninput="renderError()" />
+				<button class="btn btn-danger" onclick="clearFilter('filter-error')">✕</button>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Thời gian</th>
+							<th>Line</th>
+							<th>Job</th>
+							<th>Batch</th>
+							<th>QR Code</th>
+							<th>Error Type</th>
+							<th>Error Message</th>
+							<th>Frame</th>
+							<th>Operator</th>
+						</tr>
+					</thead>
+					<tbody id="body-error">
+						<tr class="empty-row">
+							<td colspan="9">Chưa có dữ liệu</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Panel: Sync -->
+		<div class="panel" id="panel-sync">
+			<div class="toolbar">
+				<span style="font-size:12px;color:#6b7280;">Trạng thái đồng bộ từ client R-Link.</span>
+				<button class="btn btn-primary" onclick="fetchSyncStatus()">&#8635; Làm mới</button>
+			</div>
+			<div style="display:flex;gap:12px;margin-bottom:12px;">
+				<div style="background:#1e2435;border:1px solid #374151;border-radius:8px;padding:12px 20px;text-align:center;">
+					<div style="font-size:22px;font-weight:700;color:#60a5fa" id="srv-in">-</div>
+					<div style="font-size:11px;color:#6b7280">Server nhận Status</div>
+				</div>
+				<div style="background:#1e2435;border:1px solid #374151;border-radius:8px;padding:12px 20px;text-align:center;">
+					<div style="font-size:22px;font-weight:700;color:#86efac" id="srv-cam">-</div>
+					<div style="font-size:11px;color:#6b7280">Server nhận Camera</div>
+				</div>
+				<div style="background:#1e2435;border:1px solid #374151;border-radius:8px;padding:12px 20px;text-align:center;">
+					<div style="font-size:22px;font-weight:700;color:#fca5a5" id="srv-err">-</div>
+					<div style="font-size:11px;color:#6b7280">Server nhận Error</div>
+				</div>
+			</div>
+
+			<p style="font-size:12px;color:#60a5fa;margin-bottom:6px;font-weight:600;">Tổng theo Line</p>
+			<div class="table-wrap" style="margin-bottom:16px;">
+				<table>
+					<thead>
+						<tr>
+							<th>Line</th>
+							<th>RLink</th>
+							<th>Log In chờ</th>
+							<th>Camera chờ</th>
+							<th>Error chờ</th>
+							<th>Báo lúc</th>
+							<th>Thao tác</th>
+						</tr>
+					</thead>
+					<tbody id="body-sync">
+						<tr class="empty-row">
+							<td colspan="7">Chưa có báo cáo</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+
+			<p style="font-size:12px;color:#60a5fa;margin-bottom:6px;font-weight:600;">Chi tiết theo Job (chưa đồng bộ)</p>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Line</th>
+							<th>Job</th>
+							<th>Batch</th>
+							<th>Log In</th>
+							<th>Camera</th>
+							<th>Error</th>
+							<th>Tổng chờ</th>
+						</tr>
+					</thead>
+					<tbody id="body-sync-job">
+						<tr class="empty-row">
+							<td colspan="7">Tất cả đã đồng bộ</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+
+
+		<script src="log-monitor.js"></script>
+	</body>
+</html>

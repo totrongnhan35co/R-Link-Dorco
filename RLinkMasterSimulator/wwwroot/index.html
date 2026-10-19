@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="vi">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>R-Link Master Simulator</title>
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+		<style>
+			body { background: #1e1e2e; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; }
+			.card { background: #313244; border: 1px solid #45475a; }
+			.card-header { background: #45475a; font-weight: 600; }
+			.badge-ok  { background: #a6e3a1 !important; color: #1e1e2e !important; }
+			.badge-err { background: #f38ba8 !important; color: #1e1e2e !important; }
+			.table { color: #cdd6f4; }
+			.table th { color: #89b4fa; border-color: #45475a; }
+			.table td { border-color: #313244; font-size: .82rem; }
+			input.form-control, select.form-select {
+			background: #1e1e2e; color: #cdd6f4; border-color: #45475a;
+			}
+			input.form-control:focus, select.form-select:focus {
+			background: #1e1e2e; color: #fff; border-color: #89b4fa; box-shadow: none;
+			}
+			h6.section { color: #89b4fa; border-bottom: 1px solid #45475a; padding-bottom: 4px; margin-top: 14px; }
+			.btn-teal   { background: #94e2d5; color: #1e1e2e; border: none; }
+			.btn-purple { background: #cba6f7; color: #1e1e2e; border: none; }
+			.btn-red    { background: #f38ba8; color: #1e1e2e; border: none; }
+			.btn-orange { background: #fab387; color: #1e1e2e; border: none; font-weight: 600; }
+			.num-big { font-size: 2rem; font-weight: 700; }
+			#logBox { background: #11111b; color: #a6e3a1; font-family: Consolas, monospace;
+			font-size: .8rem; height: 160px; overflow-y: auto; padding: 8px;
+			border-radius: 6px; border: 1px solid #45475a; }
+			/* ── Terminal Panel ────────────────────────────────────────────── */
+			#terminalBox {
+			background: #11111b;
+			color: #cdd6f4;
+			font-family: Consolas, 'Courier New', monospace;
+			font-size: .8rem;
+			height: 340px;
+			overflow-y: auto;
+			padding: 10px 12px;
+			border-radius: 6px;
+			border: 1px solid #45475a;
+			scroll-behavior: smooth;
+			}
+			#terminalBox .log-REQUEST { color: #89b4fa; }
+			#terminalBox .log-INFO    { color: #a6e3a1; }
+			#terminalBox .log-WARN    { color: #fab387; }
+			#terminalBox .log-ERROR   { color: #f38ba8; font-weight: 600; }
+			#terminalBox .log-ts      { color: #585b70; margin-right: 6px; }
+			#terminalBox .log-src     { color: #cba6f7; margin-right: 6px; }
+		</style>
+	</head>
+	<body>
+
+		<!-- NAVBAR -->
+		<nav class="navbar" style="background:#181825; border-bottom:1px solid #45475a; padding:10px 20px">
+			<span style="font-size:1.1rem; font-weight:700; color:#cba6f7">🖥 R-Link Master Simulator</span>
+			<span class="ms-auto text-muted small" style="display:flex;align-items:center;gap:16px;">
+				<a href="/log-monitor.html" target="_blank"
+				   style="color:#a6e3a1;text-decoration:none;font-weight:600;">
+					📋 Log Monitor ↗
+				</a>
+				http://localhost:5130
+				<a href="/swagger" target="_blank" class="text-info text-decoration-none">Swagger UI ↗</a>
+			</span>
+		</nav>
+
+		<div class="container-fluid py-3 px-4">
+			<div class="row g-3">
+
+				<!-- ── CỘT TRÁI: QR Bank + Push ─────────────────────────────── -->
+				<div class="col-lg-4">
+
+
+					<!-- QR Bank -->
+					<div class="card mb-3">
+						<div class="card-header">📦 Kho QR</div>
+						<div class="card-body">
+							<div class="row text-center mb-3">
+								<div class="col-4">
+									<div class="num-big text-success" id="qrAvailable">—</div>
+									<small class="text-muted">Hiện có</small>
+								</div>
+								<div class="col-4">
+									<div class="num-big" style="color:#89b4fa" id="qrGenerated">—</div>
+									<small class="text-muted">Đã tạo</small>
+								</div>
+								<div class="col-4">
+									<div class="num-big" style="color:#fab387" id="qrAllocated">—</div>
+									<small class="text-muted">Đã cấp</small>
+								</div>
+							</div>
+
+							<h6 class="section">Tạo QR</h6>
+							<div class="input-group mb-2">
+								<input id="genCount"  type="number" class="form-control" value="100" min="1" max="100000" placeholder="Số lượng" />
+								<input id="genPrefix" type="text"   class="form-control" value="THSIM" style="max-width:90px" placeholder="Prefix" />
+								<button class="btn btn-teal" onclick="generateQr()">+ Tạo</button>
+							</div>
+							<button class="btn btn-red btn-sm w-100" onclick="clearQr()">🗑 Xóa toàn bộ kho</button>
+						</div>
+					</div>
+
+					<!-- Push QR -->
+					<div class="card">
+						<div class="card-header">→ Đẩy QR sang R-Link QrBank</div>
+						<div class="card-body">
+							<div class="row g-2">
+								<div class="col-8">
+									<label class="form-label small">IP R-Link</label>
+									<input id="rlinkIp" type="text" class="form-control" placeholder="192.168.1.x" value="192.168.1." />
+								</div>
+								<div class="col-4">
+									<label class="form-label small">Port</label>
+									<input id="rlinkPort" type="number" class="form-control" value="5002" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Line ID</label>
+									<input id="lineId" type="text" class="form-control" value="L01" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Tên Line</label>
+									<input id="lineName" type="text" class="form-control" value="Line 01" />
+								</div>
+								<div class="col-8">
+									<label class="form-label small">Batch</label>
+									<input id="batch" type="text" class="form-control" value="BATCH001" />
+								</div>
+								<div class="col-4">
+									<label class="form-label small">Số QR</label>
+									<input id="pushCount" type="number" class="form-control" value="10" min="1" />
+								</div>
+							</div>
+							<button class="btn btn-orange w-100 mt-3" onclick="pushQr()">→ Đẩy QR sang R-Link</button>
+							<div id="pushStatus" class="mt-2 small"></div>
+						</div>
+					</div>
+
+				</div>
+				<!-- /col-left -->
+
+				<!-- ── CỘT GIỮA: Settings ────────────────────────────────────── -->
+				<div class="col-lg-4">
+					<div class="card h-100">
+						<div class="card-header">⚙ Cấu hình R-Link Settings</div>
+						<div class="card-body">
+							<div class="row g-2">
+								<div class="col-12">
+									<label class="form-label small">Chế độ vận hành</label>
+									<select id="cfgMode" class="form-select">
+										<option value="1">Chế độ 1 — Batch/QR (Delta)</option>
+										<option value="2">Chế độ 2 — AutoRefresh (N phút)</option>
+										<option value="3">Chế độ 3 — Product/QR</option>
+									</select>
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Delta (phút) — Chế độ 1</label>
+									<input id="cfgDelta"     type="number" class="form-control" value="5" min="1" max="15" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">N phút — Chế độ 2</label>
+									<input id="cfgNMinutes"  type="number" class="form-control" value="30" min="1" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Buffer máy in</label>
+									<input id="cfgBuffer"    type="number" class="form-control" value="50" min="0" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Ngưỡng cấp phát QR</label>
+									<input id="cfgThreshold" type="number" class="form-control" value="100" min="0" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Monitoring (giây)</label>
+									<input id="cfgMonitor"   type="number" class="form-control" value="30" min="5" />
+								</div>
+								<div class="col-6">
+									<label class="form-label small">Log interval (phút)</label>
+									<input id="cfgLog"       type="number" class="form-control" value="10" min="1" />
+								</div>
+								<div class="col-12">
+									<label class="form-label small">Thư mục ảnh lỗi</label>
+									<input id="cfgImgFolder" type="text" class="form-control" value="C:\THTrueMilk\ErrorImages" />
+								</div>
+							</div>
+							<button class="btn btn-purple w-100 mt-3" onclick="saveSettings()">💾 Lưu Settings</button>
+							<div id="settingsStatus" class="small mt-1 text-center"></div>
+
+							<h6 class="section">Tài khoản giả lập</h6>
+							<table class="table table-sm mb-0">
+								<thead>
+									<tr>
+										<th>Username</th>
+										<th>Password</th>
+										<th>Role</th>
+									</tr>
+								</thead>
+								<tbody id="accountsTable"></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- ── CỘT PHẢI: Log ─────────────────────────────────────────── -->
+				<div class="col-lg-4">
+					<div class="card h-100">
+						<div class="card-header">📋 Activity Log</div>
+						<div class="card-body d-flex flex-column">
+							<div id="logBox" class="flex-grow-1"></div>
+							<button class="btn btn-sm btn-red mt-2" onclick="clearLog()">Xóa log</button>
+						</div>
+					</div>
+				</div>
+
+				<!-- ── QUẢN LÝ NHÀ MÁY (full width) ─────────────────────────── -->
+				<div class="col-12">
+					<div class="card">
+						<div class="card-header d-flex justify-content-between align-items-center">
+							<span>
+								🏭 Quản lý Nhà máy
+								<span class="badge bg-secondary ms-1" id="factoryCount">0</span>
+							</span>
+							<button class="btn btn-sm btn-teal" onclick="showAddFactory()">+ Thêm Nhà máy</button>
+						</div>
+						<div class="card-body p-0">
+
+							<!-- Form thêm/sửa nhà máy -->
+							<div id="factoryForm" style="display:none; background:#2a2a3e; padding:12px 16px; border-bottom:1px solid #45475a">
+								<div class="row g-2 align-items-end">
+									<div class="col-3">
+										<label class="form-label small">Mã nhà máy</label>
+										<input id="fFactoryCode" type="text" class="form-control form-control-sm" placeholder="1210" />
+									</div>
+									<div class="col-5">
+										<label class="form-label small">Tên nhà máy</label>
+										<input id="fFactoryName" type="text" class="form-control form-control-sm" placeholder="Bình Dương" />
+									</div>
+									<div class="col-4 d-flex gap-2">
+										<button class="btn btn-sm btn-teal"  onclick="saveFactory()">💾 Lưu</button>
+										<button class="btn btn-sm btn-red"   onclick="cancelFactory()">✕ Huỷ</button>
+									</div>
+								</div>
+								<div id="factoryFormMsg" class="small mt-1"></div>
+							</div>
+
+							<!-- Bảng nhà máy -->
+							<div class="table-responsive">
+								<table class="table table-sm table-hover mb-0">
+									<thead>
+										<tr>
+											<th>Mã nhà máy</th>
+											<th>Tên nhà máy</th>
+											<th>Số line</th>
+											<th style="width:180px">Thao tác</th>
+										</tr>
+									</thead>
+									<tbody id="factoriesTable"></tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- ── QUẢN LÝ LINES (full width) ───────────────────────────── -->
+				<div class="col-12">
+					<div class="card">
+						<div class="card-header d-flex justify-content-between align-items-center">
+							<span>
+								🔌 Quản lý Lines
+								<span class="badge bg-secondary ms-1" id="lineCount">0</span>
+								<select id="filterFactory" class="form-select form-select-sm d-inline-block ms-2"
+										style="width:180px; vertical-align:middle" onchange="loadLines()">
+									<option value="">— Tất cả nhà máy —</option>
+								</select>
+							</span>
+							<button class="btn btn-sm btn-teal" onclick="showAddLine()">+ Thêm Line</button>
+						</div>
+						<div class="card-body p-0">
+
+							<!-- Form thêm/sửa -->
+							<div id="lineForm" style="display:none; background:#2a2a3e; padding:12px 16px; border-bottom:1px solid #45475a">
+								<div class="row g-2 align-items-end">
+									<div class="col-2">
+										<label class="form-label small">Line ID</label>
+										<input id="fLineId" type="text" class="form-control form-control-sm" placeholder="L05" />
+									</div>
+									<div class="col-3">
+										<label class="form-label small">Tên Line</label>
+										<input id="fLineName" type="text" class="form-control form-control-sm" placeholder="Line 05" />
+									</div>
+									<div class="col-3">
+										<label class="form-label small">IP R-Link</label>
+										<input id="fLineIp" type="text" class="form-control form-control-sm" placeholder="192.168.1.x" />
+									</div>
+									<div class="col-2">
+										<label class="form-label small">Nhà máy</label>
+										<select id="fLineFactory" class="form-select form-select-sm"></select>
+									</div>
+									<div class="col-2 d-flex gap-2">
+										<button class="btn btn-sm btn-teal" onclick="saveLine()">💾 Lưu</button>
+										<button class="btn btn-sm btn-red"  onclick="cancelLine()">✕ Huỷ</button>
+									</div>
+								</div>
+								<div id="lineFormMsg" class="small mt-1"></div>
+							</div>
+
+							<!-- Bảng lines -->
+							<div class="table-responsive">
+								<table class="table table-sm table-hover mb-0">
+									<thead>
+										<tr>
+											<th>Nhà máy</th>
+											<th>Line ID</th>
+											<th>Tên Line</th>
+											<th>IP R-Link</th>
+											<th>Trạng thái</th>
+											<th style="width:220px">Thao tác</th>
+										</tr>
+									</thead>
+									<tbody id="linesTable"></tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- ── MONITOR LOG (full width) ──────────────────────────────── -->
+				<div class="col-12">
+					<div class="card">
+						<div class="card-header d-flex justify-content-between align-items-center">
+							<span>
+								📡 Monitor Log nhận từ R-Link
+								<span class="badge bg-secondary ms-1" id="monitorCount">0</span>
+							</span>
+							<button class="btn btn-sm btn-red" onclick="clearMonitor()">Xóa</button>
+						</div>
+						<div class="card-body p-0">
+							<div class="table-responsive">
+								<table class="table table-sm table-hover mb-0">
+									<thead>
+										<tr>
+											<th>Thời gian</th>
+											<th>R-Link</th>
+											<th>Line</th>
+											<th>Batch</th>
+											<th>Produced</th>
+											<th>QR Used</th>
+											<th>Failed</th>
+											<th>🖨 Printer</th>
+											<th>📷 Camera</th>
+											<th>🔧 PLC</th>
+										</tr>
+									</thead>
+									<tbody id="monitorTable"></tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- ── SERVER TERMINAL (full width) ──────────────────────────── -->
+				<div class="col-12">
+					<div class="card">
+						<div class="card-header d-flex justify-content-between align-items-center">
+							<span>
+								🖥 Server Terminal
+								<span class="badge bg-secondary ms-1" id="terminalCount">0</span>
+								<!-- Bộ lọc level -->
+								<select id="terminalFilter" class="form-select form-select-sm d-inline-block ms-2"
+										style="width:130px; vertical-align:middle" onchange="renderTerminal()">
+									<option value="">Tất cả</option>
+									<option value="REQUEST">REQUEST</option>
+									<option value="INFO">INFO</option>
+									<option value="WARN">WARN</option>
+									<option value="ERROR">ERROR</option>
+								</select>
+								<!-- Auto-scroll toggle -->
+								<label class="form-check-label ms-3 small" style="cursor:pointer">
+									<input type="checkbox" id="termAutoScroll" class="form-check-input me-1" checked="" />
+									Auto-scroll
+								</label>
+							</span>
+							<div class="d-flex gap-2">
+								<button class="btn btn-sm btn-teal"  onclick="loadTerminal()">↻ Làm mới</button>
+								<button class="btn btn-sm btn-red"   onclick="clearTerminal()">🗑 Xóa</button>
+							</div>
+						</div>
+						<div class="card-body p-0 px-2 pb-2">
+							<div id="terminalBox"></div>
+						</div>
+					</div>
+				</div>
+
+			</div>
+			<!-- /row -->
+		</div>
+
+		<script>
+			// ── Helpers ────────────────────────────────────────────────────────
+			function fmt(n) { return (n ?? 0).toLocaleString(); }
+
+			const _logs = [];
+			function log(msg, color) {
+			const now  = new Date().toLocaleTimeString('vi-VN');
+			const line = `<span style="color:${color || '#a6e3a1'}">[${now}] ${msg}</span>`;
+			_logs.unshift(line);
+			if (_logs.length > 200) _logs.pop();
+			document.getElementById('logBox').innerHTML = _logs.join('<br/>');
+			}
+
+			function clearLog() { _logs.length = 0; document.getElementById('logBox').innerHTML = ''; }
+
+			async function apiFetch(url, opts = {}) {
+			opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+			const r = await fetch(url, opts);
+			const json = await r.json().catch(() => ({}));
+			return { ok: r.ok, status: r.status, data: json };
+			}
+
+			// ── QR Bank ────────────────────────────────────────────────────────
+			async function loadQrStatus() {
+			const { ok, data } = await apiFetch('/api/sim/qrbank/status');
+			if (!ok) return;
+			document.getElementById('qrAvailable').textContent = fmt(data.available);
+			document.getElementById('qrGenerated').textContent = fmt(data.totalGenerated);
+			document.getElementById('qrAllocated').textContent = fmt(data.totalAllocated);
+			}
+
+			async function generateQr() {
+			const count  = +document.getElementById('genCount').value  || 100;
+			const prefix =  document.getElementById('genPrefix').value || 'THSIM';
+			const params = new URLSearchParams({ count, prefix });
+			const { ok, data } = await apiFetch(`/api/sim/qrbank/generate?${params}`, { method: 'POST' });
+			if (ok) {
+			log(`✓ Đã tạo ${fmt(data.generated)} QR. Kho: ${fmt(data.available)}`);
+			loadQrStatus();
+			} else {
+			log(`✗ Generate lỗi: ${data.error}`, '#f38ba8');
+			}
+			}
+
+			async function clearQr() {
+			if (!confirm('Xóa toàn bộ kho QR?')) return;
+			const { ok } = await apiFetch('/api/sim/qrbank/clear', { method: 'DELETE' });
+			if (ok) { log('🗑 Đã xóa kho QR.', '#f38ba8'); loadQrStatus(); }
+			}
+
+			// ── Push QR ────────────────────────────────────────────────────────
+			async function pushQr() {
+			const rlinkIp   = document.getElementById('rlinkIp').value.trim();
+			const rlinkPort = +document.getElementById('rlinkPort').value || 5002;
+			const lineId    = document.getElementById('lineId').value.trim();
+			const lineName  = document.getElementById('lineName').value.trim();
+			const batch     = document.getElementById('batch').value.trim();
+			const count     = +document.getElementById('pushCount').value || 10;
+
+			if (!rlinkIp) { alert('Nhập IP R-Link.'); return; }
+
+			const st = document.getElementById('pushStatus');
+			st.textContent = '⏳ Đang đẩy...'; st.className = 'mt-2 small text-warning';
+			log(`→ Bắt đầu push ${count} QR → ${rlinkIp}:${rlinkPort} ...`, '#fab387');
+
+			const { ok, data } = await apiFetch('/api/sim/push/batch', {
+			method: 'POST',
+			body: JSON.stringify({ rlinkIp, rlinkPort, factoryCode: 'TH', lineId, lineName, batch, count })
+			});
+
+			if (ok) {
+			st.textContent = `✓ OK=${data.ok}  Dup=${data.duplicates}  Fail=${data.fail}  Kho còn: ${fmt(data.remaining)}`;
+			st.className   = data.fail === 0 ? 'mt-2 small text-success' : 'mt-2 small text-warning';
+			log(`✓ Push xong → OK=${data.ok} Dup=${data.duplicates} Fail=${data.fail} | Kho còn ${fmt(data.remaining)}`,
+			data.fail === 0 ? '#a6e3a1' : '#fab387');
+			} else {
+			st.textContent = `✗ ${data.error || 'Lỗi kết nối'}`;
+			st.className   = 'mt-2 small text-danger';
+			log(`✗ Push thất bại: ${data.error || JSON.stringify(data)}`, '#f38ba8');
+			}
+			loadQrStatus();
+			}
+
+			// ── Settings ───────────────────────────────────────────────────────
+			async function saveSettings() {
+			const body = {
+			OperatingMode:             +document.getElementById('cfgMode').value,
+			DeltaMinutes:              +document.getElementById('cfgDelta').value,
+			NMinutes:                  +document.getElementById('cfgNMinutes').value,
+			BufferCount:               +document.getElementById('cfgBuffer').value,
+			QrThreshold:               +document.getElementById('cfgThreshold').value,
+			MonitoringIntervalMinutes: +document.getElementById('cfgMonitor').value,
+			LogIntervalMinutes:        +document.getElementById('cfgLog').value,
+			ErrorImageFolder:           document.getElementById('cfgImgFolder').value,
+			};
+			const { ok } = await apiFetch('/api/sim/settings', { method: 'PUT', body: JSON.stringify(body) });
+			const st = document.getElementById('settingsStatus');
+			st.textContent = ok ? '✓ Đã lưu settings' : '✗ Lỗi lưu settings';
+			st.className   = `small text-center ${ok ? 'text-success' : 'text-danger'}`;
+			if (ok) log('⚙ Settings đã cập nhật.');
+			setTimeout(() => st.textContent = '', 3000);
+			}
+
+			async function loadAccounts() {
+			const { ok, data } = await apiFetch('/api/sim/accounts');
+			if (!ok) return;
+			const passwords = { config: 'config@123', admin: 'admin@123', operator: 'operator@123' };
+			document.getElementById('accountsTable').innerHTML = data.map(a => `
+			<tr>
+				<td>
+					<code>${a.username}</code>
+				</td>
+				<td>
+					<code class="text-muted">${passwords[a.username] || '—'}</code>
+				</td>
+				<td>
+					<span class="badge" style="background:#89b4fa;color:#1e1e2e">${a.role}</span>
+				</td>
+			</tr>`).join('');
+			}
+
+			// ── Monitor Log ────────────────────────────────────────────────────
+			async function loadMonitor() {
+			const { ok, data } = await apiFetch('/api/sim/monitor/logs?count=50');
+			if (!ok) return;
+			document.getElementById('monitorCount').textContent = data.length;
+			document.getElementById('monitorTable').innerHTML   = data.map(e => {
+			const t    = new Date(e.receivedAt).toLocaleTimeString('vi-VN');
+			const conn = v => v
+			? `<span class="badge badge-ok">✓</span>`
+			: `<span class="badge badge-err">✗</span>`;
+			return `
+			<tr>
+				<td>${t}</td>
+				<td>${e.rlinkName || '—'}</td>
+				<td>${e.lineId || '—'}</td>
+				<td>${e.currentBatch || '—'}</td>
+				<td>${fmt(e.totalProduced)}</td>
+				<td>${fmt(e.totalQrUsed)}</td>
+				<td class="${e.totalQrFailed > 0 ? 'text-danger fw-bold' : ''}">${fmt(e.totalQrFailed)}</td>
+				<td>${conn(e.isPrinterConnected)}</td>
+				<td>${conn(e.isCameraConnected)}</td>
+				<td>${conn(e.isPlcConnected)}</td>
+			</tr>`;
+			}).join('');
+			}
+
+			async function clearMonitor() {
+			await apiFetch('/api/sim/monitor/logs', { method: 'DELETE' });
+			log('🗑 Đã xóa monitor log.', '#f38ba8');
+			loadMonitor();
+			}
+
+			// ── SERVER TERMINAL ────────────────────────────────────────────────
+			let _terminalEntries = [];
+
+			async function loadTerminal() {
+			const { ok, data } = await apiFetch('/api/sim/logs?count=200');
+			if (!ok) return;
+			_terminalEntries = data;
+			renderTerminal();
+			}
+
+			function renderTerminal() {
+			const filter = document.getElementById('terminalFilter').value;
+			const box    = document.getElementById('terminalBox');
+
+			const entries = filter
+			? _terminalEntries.filter(e => e.level === filter)
+			: _terminalEntries;
+
+			document.getElementById('terminalCount').textContent = entries.length;
+
+			const levelIcon = { REQUEST: '→', INFO: '✓', WARN: '⚠', ERROR: '✗' };
+
+			box.innerHTML = entries.map(e => {
+			const ts  = new Date(e.timestamp).toLocaleTimeString('vi-VN', { hour12: false });
+			const ms  = new Date(e.timestamp).getMilliseconds().toString().padStart(3, '0');
+			const ico = levelIcon[e.level] || '·';
+			return `<div class="log-${e.level}">
+				` +
+				`<span class="log-ts">${ts}.${ms}</span>` +
+				`<span class="log-src">[${e.source}]</span>` +
+				`${ico} ${escHtml(e.message)}` +
+				`
+			</div>`;
+			}).join('');
+
+			// Auto-scroll xuống cuối (entries mới nhất ở đầu, nên scroll top)
+			if (document.getElementById('termAutoScroll').checked) {
+			box.scrollTop = 0;
+			}
+			}
+
+			function escHtml(s) {
+			return String(s)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;');
+			}
+
+			async function clearTerminal() {
+			if (!confirm('Xóa toàn bộ server log?')) return;
+			await apiFetch('/api/sim/logs', { method: 'DELETE' });
+			_terminalEntries = [];
+			renderTerminal();
+			log('🗑 Đã xóa server terminal.', '#f38ba8');
+			}
+
+			// ── FACTORIES ─────────────────────────────────────────────────────
+			let _allFactories = [];
+			let _editingFactoryCode = null;
+
+			async function loadFactories() {
+			const { ok, data } = await apiFetch('/api/sim/factories');
+			if (!ok) return;
+			_allFactories = data;
+			document.getElementById('factoryCount').textContent = data.length;
+
+			const filterSel = document.getElementById('filterFactory');
+			const curFilter = filterSel.value;
+			filterSel.innerHTML = '<option value="">— Tất cả nhà máy —</option>'
+			+ data.map(f => `<option value="${f.factory_code}">${f.factory_code} — ${f.factory_name}</option>`).join('');
+			filterSel.value = curFilter;
+
+			const fLineFactory = document.getElementById('fLineFactory');
+			const curFac = fLineFactory.value;
+			fLineFactory.innerHTML = '<option value="">— Chọn nhà máy —</option>'
+			+ data.map(f => `<option value="${f.factory_code}">${f.factory_code} — ${f.factory_name}</option>`).join('');
+			fLineFactory.value = curFac;
+
+			const lineCounts = {};
+			if (window._allLines) {
+			window._allLines.forEach(l => {
+			lineCounts[l.factory_code] = (lineCounts[l.factory_code] || 0) + 1;
+			});
+			}
+
+			document.getElementById('factoriesTable').innerHTML = data.map(f => `
+			<tr>
+				<td>
+					<code>${f.factory_code}</code>
+				</td>
+				<td>${f.factory_name}</td>
+				<td>
+					<span class="badge bg-secondary">${lineCounts[f.factory_code] || 0}</span>
+				</td>
+				<td>
+					<button class="btn btn-sm btn-purple me-1"
+							onclick="editFactory('${f.factory_code}','${f.factory_name}')">✏ Sửa</button>
+					<button class="btn btn-sm btn-red"
+							onclick="deleteFactory('${f.factory_code}')">🗑 Xóa</button>
+				</td>
+			</tr>`).join('');
+			}
+
+			function showAddFactory() {
+			_editingFactoryCode = null;
+			document.getElementById('fFactoryCode').value    = '';
+			document.getElementById('fFactoryName').value    = '';
+			document.getElementById('fFactoryCode').disabled = false;
+			document.getElementById('factoryFormMsg').textContent = '';
+			document.getElementById('factoryForm').style.display = 'block';
+			}
+
+			function editFactory(code, name) {
+			_editingFactoryCode = code;
+			document.getElementById('fFactoryCode').value    = code;
+			document.getElementById('fFactoryName').value    = name;
+			document.getElementById('fFactoryCode').disabled = true;
+			document.getElementById('factoryFormMsg').textContent = '';
+			document.getElementById('factoryForm').style.display = 'block';
+			}
+
+			function cancelFactory() {
+			_editingFactoryCode = null;
+			document.getElementById('factoryForm').style.display = 'none';
+			}
+
+			async function saveFactory() {
+			const factory_code = document.getElementById('fFactoryCode').value.trim();
+			const factory_name = document.getElementById('fFactoryName').value.trim();
+			const msg          = document.getElementById('factoryFormMsg');
+
+			if (!factory_code || !factory_name) {
+			msg.textContent = '⚠ Nhập đủ Mã và Tên nhà máy.';
+			msg.className   = 'small mt-1 text-warning';
+			return;
+			}
+
+			const isEdit = _editingFactoryCode !== null;
+			const url    = isEdit ? `/api/sim/factories/${_editingFactoryCode}` : '/api/sim/factories';
+			const method = isEdit ? 'PUT' : 'POST';
+
+			const { ok, data } = await apiFetch(url, {
+			method,
+			body: JSON.stringify({ factory_code, factory_name })
+			});
+
+			if (ok) {
+			msg.textContent = isEdit ? '✓ Đã cập nhật.' : '✓ Đã thêm nhà máy.';
+			msg.className   = 'small mt-1 text-success';
+			log(`${isEdit ? '✏ Sửa' : '+ Thêm'} nhà máy: ${factory_code} — ${factory_name}`);
+			await loadFactories();
+			setTimeout(cancelFactory, 800);
+			} else {
+			msg.textContent = `✗ ${data.error || 'Lỗi'}`;
+			msg.className   = 'small mt-1 text-danger';
+			}
+			}
+
+			async function deleteFactory(code) {
+			if (!confirm(`Xóa nhà máy ${code}?\n(Các line thuộc nhà máy này sẽ giữ nguyên)`)) return;
+			const { ok, data } = await apiFetch(`/api/sim/factories/${code}`, { method: 'DELETE' });
+			if (ok) {
+			log(`🗑 Đã xóa nhà máy: ${code}`, '#f38ba8');
+			await loadFactories();
+			} else {
+			log(`✗ Xóa thất bại: ${data.error}`, '#f38ba8');
+			}
+			}
+
+			// ── Lines Management ───────────────────────────────────────────────
+			let _editingLineId = null;
+			window._allLines   = [];
+
+			async function loadLines() {
+			const factoryFilter = document.getElementById('filterFactory').value;
+			const url = factoryFilter
+			? `/api/sim/lines?factory_code=${encodeURIComponent(factoryFilter)}`
+			: '/api/sim/lines';
+
+			const { ok, data } = await apiFetch(url);
+			if (!ok) return;
+			window._allLines = data;
+			document.getElementById('lineCount').textContent = data.length;
+
+			const factoryMap = {};
+			_allFactories.forEach(f => { factoryMap[f.factory_code] = f.factory_name; });
+
+			document.getElementById('linesTable').innerHTML = data.map(l => {
+			const facLabel = l.factory_code
+			? `<span class="badge" style="background:#313244;color:#cba6f7;border:1px solid #cba6f7">${l.factory_code}</span> ${factoryMap[l.factory_code] || ''}`
+			: '<span class="text-muted">—</span>';
+			return `
+			<tr>
+				<td>${facLabel}</td>
+				<td>
+					<code>${l.line_id}</code>
+				</td>
+				<td>${l.line_name}</td>
+				<td>
+					<code class="text-info">${l.line_ip || '—'}</code>
+				</td>
+				<td>
+					${l.is_active
+					? '<span class="badge badge-ok">● Active</span>'
+					: '<span class="badge" style="background:#585b70;color:#cdd6f4">○ Inactive</span>'}
+				</td>
+				<td>
+					<button class="btn btn-sm btn-teal me-1"   onclick="assignLine('${l.line_id}')">⚡ Gán Active</button>
+					<button class="btn btn-sm btn-purple me-1" onclick="editLine('${l.line_id}','${l.line_name}','${l.line_ip}','${l.factory_code}')">✏</button>
+					<button class="btn btn-sm btn-red"         onclick="deleteLine('${l.line_id}')">🗑</button>
+				</td>
+			</tr>`;
+			}).join('');
+
+			await loadFactories();
+			}
+
+			function showAddLine() {
+			_editingLineId = null;
+			document.getElementById('fLineId').value        = '';
+			document.getElementById('fLineName').value      = '';
+			document.getElementById('fLineIp').value        = '';
+			document.getElementById('fLineFactory').value   = document.getElementById('filterFactory').value || '';
+			document.getElementById('fLineId').disabled     = false;
+			document.getElementById('lineFormMsg').textContent = '';
+			document.getElementById('lineForm').style.display  = 'block';
+			}
+
+			function editLine(id, name, ip, factoryCode) {
+			_editingLineId = id;
+			document.getElementById('fLineId').value        = id;
+			document.getElementById('fLineName').value      = name;
+			document.getElementById('fLineIp').value        = ip;
+			document.getElementById('fLineFactory').value   = factoryCode || '';
+			document.getElementById('fLineId').disabled     = true;
+			document.getElementById('lineFormMsg').textContent = '';
+			document.getElementById('lineForm').style.display  = 'block';
+			}
+
+			function cancelLine() {
+			_editingLineId = null;
+			document.getElementById('lineForm').style.display = 'none';
+			}
+
+			async function saveLine() {
+			const line_id      = document.getElementById('fLineId').value.trim();
+			const line_name    = document.getElementById('fLineName').value.trim();
+			const line_ip      = document.getElementById('fLineIp').value.trim();
+			const factory_code = document.getElementById('fLineFactory').value;
+			const msg          = document.getElementById('lineFormMsg');
+
+			if (!line_id || !line_name) {
+			msg.textContent = '⚠ Nhập đủ Line ID và Tên Line.';
+			msg.className   = 'small mt-1 text-warning';
+			return;
+			}
+
+			const isEdit = _editingLineId !== null;
+			const url    = isEdit ? `/api/sim/lines/${_editingLineId}` : '/api/sim/lines';
+			const method = isEdit ? 'PUT' : 'POST';
+
+			const { ok, data } = await apiFetch(url, {
+			method,
+			body: JSON.stringify({ line_id, line_name, line_ip, factory_code })
+			});
+
+			if (ok) {
+			msg.textContent = isEdit ? '✓ Đã cập nhật.' : '✓ Đã thêm line.';
+			msg.className   = 'small mt-1 text-success';
+			log(`${isEdit ? '✏ Sửa' : '+ Thêm'} line: [${factory_code}] ${line_id} — ${line_name} (${line_ip})`);
+			await loadLines();
+			setTimeout(cancelLine, 800);
+			} else {
+			msg.textContent = `✗ ${data.error || 'Lỗi'}`;
+			msg.className   = 'small mt-1 text-danger';
+			}
+			}
+
+			async function assignLine(lineId) {
+			const { ok, data } = await apiFetch(`/api/sim/lines/${lineId}/assign`, { method: 'POST' });
+			if (ok) {
+			log(`⚡ Đã gán Active: ${lineId}`, '#fab387');
+			loadLines();
+			} else {
+			log(`✗ Gán thất bại: ${data.error}`, '#f38ba8');
+			}
+			}
+
+			async function deleteLine(lineId) {
+			if (!confirm(`Xóa line ${lineId}?`)) return;
+			const { ok, data } = await apiFetch(`/api/sim/lines/${lineId}`, { method: 'DELETE' });
+			if (ok) {
+			log(`🗑 Đã xóa line: ${lineId}`, '#f38ba8');
+			loadLines();
+			} else {
+			log(`✗ Xóa thất bại: ${data.error}`, '#f38ba8');
+			}
+			}
+
+			// ── Khởi động ────────────────────────────────────────────────────
+			async function init() {
+			await loadQrStatus();
+			await loadAccounts();
+			await loadFactories();
+			await loadLines();
+			await loadMonitor();
+			await loadTerminal();
+			log('✓ Dashboard khởi động — R-Link Master Simulator sẵn sàng.', '#cba6f7');
+			}
+
+			init();
+			setInterval(() => {
+			loadQrStatus();
+			loadMonitor();
+			loadTerminal(); // ← terminal tự động refresh
+			}, 3000);
+		</script>
+	</body>
+</html>
